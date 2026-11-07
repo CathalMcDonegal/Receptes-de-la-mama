@@ -22,7 +22,7 @@
 <div id="shopping" hidden><div class="sectionhead"><h2>🛒 Llista de la compra</h2><button class="secondary" id="clearShop">Buidar</button></div><div id="shopItems"></div><p class="small">Els ingredients que marquis quedaran ratllats.</p></div>
 <div id="planner" hidden><div class="sectionhead"><h2>📅 Menú de la setmana</h2></div><p class="small">Tria una recepta per a cada àpat. El menú es desa en aquest dispositiu.</p><div id="plannerItems"></div></div>
 <div id="favorites" hidden><div class="sectionhead"><h2>♥ Les meves preferides</h2></div><div class="grid" id="favoriteRecipes"></div></div>
-<div id="more" hidden><div class="sectionhead"><h2>⚙️ Més opcions</h2></div><div class="step"><b>Les teves receptes són un tresor.</b><br>Fes una còpia de seguretat per guardar-les o traslladar-les a un altre mòbil.</div><button class="primary" id="exportData">⬇ Descarregar còpia de seguretat</button><div class="field"><label>Recuperar una còpia de seguretat</label><input id="importBackup" type="file" accept=".json,application/json"><span class="small">Selecciona un fitxer de còpia creat amb aquesta aplicació. La restauració substituirà les dades actuals.</span></div><button class="secondary" id="restoreData" style="width:100%">↥ Restaurar còpia</button><div class="sectionhead"><h2>Sobre l'aplicació</h2></div><p class="small">Receptes de la mama · El receptari familiar de casa ♥</p></div>
+<div id="more" hidden><div class="sectionhead"><h2>⚙️ Més opcions</h2></div><div class="step"><b>Les teves receptes són un tresor.</b><br>Fes una còpia de seguretat per guardar-les o traslladar-les a un altre mòbil.</div><button class="primary" id="exportData">⬇ Descarregar còpia de seguretat</button><button class="secondary" id="installApp" style="width:100%;margin-top:10px;display:none">📲 Instal·lar l'aplicació</button><div class="field"><label>Recuperar una còpia de seguretat</label><input id="importBackup" type="file" accept=".json,application/json"><span class="small">Selecciona un fitxer de còpia creat amb aquesta aplicació. La restauració substituirà les dades actuals.</span></div><button class="secondary" id="restoreData" style="width:100%">↥ Restaurar còpia</button><div class="sectionhead"><h2>Sobre l'aplicació</h2></div><p class="small">Receptes de la mama · El receptari familiar de casa ♥</p></div>
 </main>
 <button class="fab" id="addBtn">＋ Afegir recepta</button>
 <nav class="nav"><button class="active" data-tab="home"><b>⌂</b>Inici</button><button data-tab="favorites"><b>♡</b>Favorits</button><button data-tab="shopping"><b>🛒</b>Compra</button><button data-tab="planner"><b>▦</b>Menú</button><button data-tab="more"><b>⋯</b>Més</button></nav>
@@ -45,9 +45,37 @@
 <div class="toast" id="toast"></div>
 <script>
 const KEY='receptesMama_v1', SHOP='receptesMama_shop', MENU='receptesMama_menu';
-const starter=[];
-let recipes=JSON.parse(localStorage.getItem(KEY)||'null')||starter;
-let shop=JSON.parse(localStorage.getItem(SHOP)||'[]'), menu=JSON.parse(localStorage.getItem(MENU)||'{}');
+const safeRead=(key,fallback)=>{try{const value=JSON.parse(localStorage.getItem(key)||'null');return value??fallback}catch{return fallback}};
+const asLines=value=>Array.isArray(value)?value.map(x=>String(x).trim()).filter(Boolean):String(value||'').split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+const normalizeRecipe=r=>({
+  ...r,
+  id:r.id||crypto.randomUUID(),
+  name:String(r.name||r.title||'Recepta sense títol'),
+  category:r.category||'Receptes de la mama',
+  servings:Math.max(1,Number(r.servings)||4),
+  time:Math.max(0,Number(r.time)||parseInt(r.time,10)||0),
+  difficulty:r.difficulty||'Fàcil',
+  ingredients:asLines(r.ingredients),
+  steps:asLines(r.steps),
+  photo:r.photo||r.image||'',
+  notes:r.notes||'',
+  favorite:!!r.favorite
+});
+const currentRecipes=safeRead(KEY,null);
+const importedRecipes=safeRead('receptes-de-la-mama',[]);
+let recipes=(Array.isArray(currentRecipes)?currentRecipes:[]).map(normalizeRecipe);
+if(Array.isArray(importedRecipes)){
+  const known=new Set(recipes.map(r=>(r.id||'')+'|'+r.name.trim().toLowerCase()));
+  importedRecipes.map(normalizeRecipe).forEach(r=>{
+    const signature=(r.id||'')+'|'+r.name.trim().toLowerCase();
+    if(!known.has(signature)){recipes.push(r);known.add(signature)}
+  });
+}
+if(recipes.length&&!Array.isArray(currentRecipes))localStorage.setItem(KEY,JSON.stringify(recipes));
+let shop=safeRead(SHOP,[]), menu=safeRead(MENU,{});
+if(!Array.isArray(shop))shop=[];
+if(!menu||typeof menu!=='object'||Array.isArray(menu))menu={};
+
 let category='Totes',tab='home',current=null,cookStep=0;
 const $=id=>document.getElementById(id), save=()=>localStorage.setItem(KEY,JSON.stringify(recipes));
 const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -58,7 +86,7 @@ function card(r){return '<article class="recipe" data-id="'+r.id+'"><div class="
 function render(){
  const q=$('search').value.toLowerCase(),cats=['Totes',...new Set(recipes.map(r=>r.category).filter(Boolean))];
  $('cats').innerHTML=cats.map(c=>'<button class="cat '+(c===category?'active':'')+'" data-cat="'+esc(c)+'">'+esc(c)+'</button>').join('');
- let list=recipes.filter(r=>(category==='Totes'||r.category===category)&&(!q||(r.name+' '+r.ingredients.join(' ')+' '+r.notes).toLowerCase().includes(q)));
+ let list=recipes.filter(r=>(category==='Totes'||r.category===category)&&(!q||(r.name+' '+r.category+' '+r.ingredients.join(' ')+' '+r.steps.join(' ')+' '+r.notes).toLowerCase().includes(q)));
  $('recipes').innerHTML=list.length?list.map(card).join(''):'<div class="empty">🍯<br><br>Encara no hi ha receptes aquí.<br>Comencem afegint aquella recepta tan bona de la mama!</div>';
  $('count').textContent=recipes.length+' receptes';$('favoriteRecipes').innerHTML=recipes.filter(r=>r.favorite).map(card).join('')||'<div class="empty">Encara no tens cap preferida. Prem ♡ a una recepta!</div>';
  $('shopItems').innerHTML=shop.length?shop.map((s,i)=>'<div class="ing"><input type="checkbox" data-shop="'+i+'" '+(s.done?'checked':'')+'><span style="'+(s.done?'text-decoration:line-through;opacity:.5':'')+'">'+esc(s.text)+'</span><button class="x" style="margin-left:auto;width:29px;height:29px" data-delshop="'+i+'">×</button></div>').join(''):'<div class="empty">La llista és buida. Afegeix ingredients des d\'una recepta.</div>';
@@ -87,8 +115,13 @@ $('startCook').onclick=()=>{closeOverlay('detail');startCook()};
 function startCook(){cookStep=0;drawCook();showOverlay('cook')}
 function drawCook(){let steps=current.steps.length?current.steps:['Afegeix els passos de preparació editant aquesta recepta.'];$('cookContent').innerHTML='<div class="detailhero">'+(current.photo?'<img src="'+esc(current.photo)+'">':'🍲')+'</div><div class="sectionhead"><h2>'+esc(current.name)+'</h2><span class="small">Pas a pas</span></div><div class="stepcount">PAS '+(cookStep+1)+' DE '+steps.length+'</div><div class="step">'+esc(steps[cookStep])+'</div><div class="actions"><button class="secondary" id="prevStep" '+(cookStep===0?'disabled':'')+'>← Anterior</button><button class="primary" id="nextStep">'+(cookStep===steps.length-1?'Acabar ✓':'Següent →')+'</button></div><div class="field"><label>Temporitzador ràpid</label><div class="actions"><button class="secondary" data-timer="5">5 min</button><button class="secondary" data-timer="10">10 min</button><button class="secondary" data-timer="20">20 min</button></div><p id="timerText" class="small"></p></div>';$('prevStep').onclick=()=>{cookStep--;drawCook()};$('nextStep').onclick=()=>{if(cookStep<steps.length-1){cookStep++;drawCook()}else{closeOverlay('cook');toast('Bon profit! Que vagi de gust ♥')}};document.querySelectorAll('[data-timer]').forEach(b=>b.onclick=()=>{let end=Date.now()+Number(b.dataset.timer)*60000;let el=$('timerText');if(window.recipeTimer)clearInterval(window.recipeTimer);window.recipeTimer=setInterval(()=>{let left=Math.max(0,end-Date.now());el.textContent='⏳ '+Math.floor(left/60000)+':'+String(Math.floor(left/1000)%60).padStart(2,'0');if(!left){clearInterval(window.recipeTimer);el.textContent='🔔 Temps acabat!'}},500)})}
 $('clearShop').onclick=()=>{if(confirm('Buidar tota la llista?')){shop=[];localStorage.setItem(SHOP,'[]');render()}};
-$('exportData').onclick=()=>{const data={app:'Receptes de la mama',version:1,exportedAt:new Date().toISOString(),recipes,shop,menu};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='receptes-de-la-mama-copia-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);toast('Còpia de seguretat preparada ♥')};
-$('restoreData').onclick=async()=>{const file=$('importBackup').files[0];if(!file)return toast('Selecciona primer un fitxer de còpia');if(!confirm('Això substituirà les receptes, la compra i el menú actuals. Continuem?'))return;try{const data=JSON.parse(await file.text());if(data.app!=='Receptes de la mama'||!Array.isArray(data.recipes))throw new Error('invalid');recipes=data.recipes;shop=Array.isArray(data.shop)?data.shop:[];menu=data.menu&&typeof data.menu==='object'?data.menu:{};save();localStorage.setItem(SHOP,JSON.stringify(shop));localStorage.setItem(MENU,JSON.stringify(menu));$('importBackup').value='';render();toast('Còpia restaurada correctament ♥')}catch(e){toast('Aquest fitxer no sembla una còpia vàlida')}};
+$('exportData').onclick=()=>{const data={app:'Receptes de la mama',version:2,schemaVersion:2,exportedAt:new Date().toISOString(),recipes,shop,menu};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='receptes-de-la-mama-copia-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(url);toast('Còpia de seguretat preparada ♥')};
+let deferredInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();deferredInstallPrompt=event;$('installApp').style.display='block'});
+window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;$('installApp').style.display='none';toast('Aplicació instal·lada correctament ♥')});
+$('installApp').onclick=async()=>{if(!deferredInstallPrompt){toast('Per instal·lar-la, obre el menú del navegador i tria «Instal·la l'aplicació»');return}deferredInstallPrompt.prompt();const choice=await deferredInstallPrompt.userChoice;if(choice?.outcome==='accepted')$('installApp').style.display='none';deferredInstallPrompt=null};
+if(navigator.storage?.persist){navigator.storage.persist().then(granted=>{if(granted)console.info('Emmagatzematge persistent activat')}).catch(()=>{})}
+$('restoreData').onclick=async()=>{const file=$('importBackup').files[0];if(!file)return toast('Selecciona primer un fitxer de còpia');if(!confirm('Això substituirà les receptes, la compra i el menú actuals. Continuem?'))return;try{const data=JSON.parse(await file.text());if(data.app!=='Receptes de la mama'||!Array.isArray(data.recipes))throw new Error('invalid');recipes=data.recipes.map(normalizeRecipe);shop=Array.isArray(data.shop)?data.shop:[];menu=data.menu&&typeof data.menu==='object'?data.menu:{};save();localStorage.setItem(SHOP,JSON.stringify(shop));localStorage.setItem(MENU,JSON.stringify(menu));$('importBackup').value='';render();toast('Còpia restaurada correctament ♥')}catch(e){toast('Aquest fitxer no sembla una còpia vàlida')}};
 $('shopItems').onchange=e=>{if(e.target.dataset.shop!==undefined){shop[+e.target.dataset.shop].done=e.target.checked;localStorage.setItem(SHOP,JSON.stringify(shop));render()}};
 $('plannerItems').onchange=e=>{if(e.target.dataset.menu){menu[e.target.dataset.menu]=e.target.value;localStorage.setItem(MENU,JSON.stringify(menu));toast('Menú desat') }};
 $('importBtn').onclick=async()=>{let url=$('importUrl').value.trim();if(!url)return toast('Enganxa primer l’enllaç');try{let res=await fetch(url);let html=await res.text();let doc=new DOMParser().parseFromString(html,'text/html');let scripts=[...doc.querySelectorAll('script[type="application/ld+json"]')];let found=null;for(let s of scripts){try{let j=JSON.parse(s.textContent);let arr=Array.isArray(j)?j:[j];found=arr.flatMap(x=>x['@graph']||[x]).find(x=>(x['@type']||'').toString().includes('Recipe'));if(found)break}catch{}}if(found){$('rname').value=found.name||'';$('ring').value=(found.recipeIngredient||[]).join('\n');let ins=found.recipeInstructions||[];$('rsteps').value=ins.map(x=>typeof x==='string'?x:x.text||x.name||'').filter(Boolean).join('\n');$('rtime').value=parseInt(found.totalTime?.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)?.slice(1).filter(Boolean).join('')||'0')||'';$('rphoto').value=typeof found.image==='string'?found.image:Array.isArray(found.image)?found.image[0]:found.image?.url||'';toast('Recepta importada! Revisa-la abans de desar.')}else toast('No hem trobat les dades de la recepta en aquesta web. Pots copiar-les als camps manualment.')}catch(err){toast('Aquesta web no permet importar directament. Copia el text de la recepta als camps.')}};
