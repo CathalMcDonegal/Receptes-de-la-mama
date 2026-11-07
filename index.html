@@ -64,14 +64,15 @@ const normalizeRecipe=r=>({
 const currentRecipes=safeRead(KEY,null);
 const importedRecipes=safeRead('receptes-de-la-mama',[]);
 let recipes=(Array.isArray(currentRecipes)?currentRecipes:[]).map(normalizeRecipe);
+let didMigrate=!Array.isArray(currentRecipes)&&recipes.length>0;
 if(Array.isArray(importedRecipes)){
   const known=new Set(recipes.map(r=>(r.id||'')+'|'+r.name.trim().toLowerCase()));
   importedRecipes.map(normalizeRecipe).forEach(r=>{
     const signature=(r.id||'')+'|'+r.name.trim().toLowerCase();
-    if(!known.has(signature)){recipes.push(r);known.add(signature)}
+    if(!known.has(signature)){recipes.push(r);known.add(signature);didMigrate=true}
   });
 }
-if(recipes.length&&!Array.isArray(currentRecipes))localStorage.setItem(KEY,JSON.stringify(recipes));
+if(didMigrate)localStorage.setItem(KEY,JSON.stringify(recipes));
 let shop=safeRead(SHOP,[]), menu=safeRead(MENU,{});
 if(!Array.isArray(shop))shop=[];
 if(!menu||typeof menu!=='object'||Array.isArray(menu))menu={};
