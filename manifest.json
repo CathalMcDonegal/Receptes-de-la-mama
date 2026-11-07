@@ -1,0 +1,19 @@
+{
+  "name": "Receptes de la mama",
+  "short_name": "Receptes mama",
+  "description": "El receptari familiar de casa",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fbf5eb",
+  "theme_color": "#f7efe3",
+  "lang": "ca",
+  "icons": [
+    {
+      "src": "./grok_1794047774614.jpg",
+      "sizes": "any",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
